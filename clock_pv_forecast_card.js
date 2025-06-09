@@ -57,14 +57,15 @@ class ClockPvForecastCard extends LitElement {
       <ha-card>
         <div class="forecast-rows">
           ${forecast.map((item) => {
-            const value = parseFloat(this.hass.states[item.entity]?.state ?? '0');
+            const raw = this.hass.states[item.entity]?.state;
+            const value = !isNaN(parseFloat(raw)) ? parseFloat(raw) : 0;
             const dayLabel = this._getWeekdayName(item.offset);
             const barStyle = `--bar-width: ${this._barWidth(value)}%; --bar-gradient: linear-gradient(to right, ${this.config.bar_color_start}, ${this.config.bar_color_end}); --animation-time: ${this.config.animation_duration}`;
             return html`
               <div class="forecast-row">
                 <div class="day" style="width: ${this.config.day_column_width}">${dayLabel}</div>
                 <div class="bar-container">
-                  <div class="bar" style="${barStyle}"></div>
+                  <div class="bar" style="${barStyle}" title="${value.toFixed(2)} kWh"></div>
                 </div>
                 <div class="value">${value.toFixed(1)} kWh</div>
               </div>`;
@@ -100,8 +101,19 @@ class ClockPvForecastCard extends LitElement {
   }
 
   _barWidth(value) {
-    const max = parseFloat(this.config.max_value || 100);
-    return Math.min((value / max) * 100, 100);
+    const forecastValues = [
+      this.config.entity_today,
+      this.config.entity_tomorrow,
+      this.config.entity_day3,
+      this.config.entity_day4,
+      this.config.entity_day5
+    ].map(entityId => {
+      const raw = this.hass.states[entityId]?.state;
+      return !isNaN(parseFloat(raw)) ? parseFloat(raw) : 0;
+    });
+
+    const dynamicMax = Math.max(...forecastValues, 1); // fallback 1 für sichere Division
+    return Math.min((value / dynamicMax) * 100, 100);
   }
 
   static styles = css`
