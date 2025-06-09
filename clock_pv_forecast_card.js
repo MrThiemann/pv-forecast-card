@@ -9,24 +9,25 @@ class ClockPvForecastCard extends LitElement {
     config: {},
   };
 
-  setConfig(config) {
-    const required = [
-      'entity_today',
-      'entity_tomorrow',
-      'entity_day3',
-      'entity_day4',
-      'entity_day5'
-    ];
-    for (const key of required) {
-      if (!config[key]) throw new Error(`Missing entity: ${key}`);
-    }
-    const weekdayWidth = {
-      narrow: '1.5em',
-      short: '2.5em',
-      long: '5em',
-    };
-    const format = config.weekday_format || 'short';
+  static get type() {
+    return 'clock-pv-forecast-card';
+  }
 
+  static async getConfigElement() {
+    return document.createElement('clock-pv-forecast-card-editor');
+  }
+
+  static getStubConfig() {
+    return {
+      entity_today: '',
+      entity_tomorrow: '',
+      entity_day3: '',
+      entity_day4: '',
+      entity_day5: ''
+    };
+  }
+
+  setConfig(config) {
     this.config = {
       animation_duration: config.animation_duration || '1s',
       bar_color_start: config.bar_color_start || '#3498db',
@@ -37,14 +38,21 @@ class ClockPvForecastCard extends LitElement {
       remaining_low_color_start: config.remaining_low_color_start || '#e74c3c',
       remaining_low_color_end: config.remaining_low_color_end || '#e67e22',
       max_value: config.max_value ?? 100,
-      weekday_format: format,
-      day_column_width: weekdayWidth[format] || '2.5em',
+      weekday_format: config.weekday_format || 'short',
+      day_column_width: {
+        narrow: '1.5em',
+        short: '2.5em',
+        long: '5em',
+      }[config.weekday_format || 'short'],
       entity_remaining: config.entity_remaining || null,
       ...config,
     };
   }
 
   render() {
+    if (!this.config.entity_today || !this.config.entity_tomorrow || !this.config.entity_day3 || !this.config.entity_day4 || !this.config.entity_day5) {
+      return html`<ha-card><div class="warning">Bitte alle Pflicht-Entities konfigurieren.</div></ha-card>`;
+    }
     const forecast = [
       { offset: 0, entity: this.config.entity_today },
       { offset: 1, entity: this.config.entity_tomorrow },
@@ -167,3 +175,152 @@ class ClockPvForecastCard extends LitElement {
 if (!customElements.get('clock-pv-forecast-card')) {
   customElements.define('clock-pv-forecast-card', ClockPvForecastCard);
 }
+
+// Visual Editor for Home Assistant UI
+class ClockPvForecastCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    config: {},
+  };
+
+  static get styles() {
+    return css`
+      .editor-section {
+        padding: 1em;
+        background: var(--card-background-color, #f7f7f7);
+        border-radius: 8px;
+        box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+        margin-bottom: 1em;
+      }
+      .section-title {
+        font-size: 1.1em;
+        font-weight: bold;
+        margin-bottom: 0.6em;
+        border-bottom: 1px solid var(--divider-color, #ddd);
+        padding-bottom: 0.2em;
+        color: var(--primary-text-color);
+      }
+      .editor-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.2em;
+        align-items: center;
+      }
+      label {
+        font-weight: 500;
+        display: block;
+        margin-bottom: 0.25em;
+        color: var(--primary-text-color);
+      }
+      .tooltip-label {
+        display: flex;
+        align-items: center;
+        gap: 0.3em;
+      }
+      .tooltip-icon {
+        cursor: help;
+        color: var(--secondary-text-color, #888);
+        font-size: 1em;
+        user-select: none;
+      }
+      select,
+      input[type="number"],
+      input[type="text"],
+      input[type="color"] {
+        width: 100%;
+        padding: 0.4em;
+        font-size: 0.9em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+    `;
+  }
+
+  setConfig(config) {
+    this.config = {
+      entity_today: '',
+      entity_tomorrow: '',
+      entity_day3: '',
+      entity_day4: '',
+      entity_day5: '',
+      ...config,
+    };
+  }
+
+  _updateConfig(e) {
+    const target = e.target;
+    if (!this.config || !target) return;
+    this.config = { ...this.config, [target.name]: target.value };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this.config } }));
+  }
+
+  render() {
+    if (!this.hass) return html``;
+    const sensors = Object.keys(this.hass.states).filter(e => e.startsWith('sensor.'));
+
+    const renderSelect = (name, value) => html`
+      <select name="${name}" @change=${this._updateConfig}>
+        ${sensors.map(entityId => html`
+          <option value="${entityId}" ?selected=${value === entityId}>${entityId}</option>
+        `)}
+      </select>
+    `;
+
+    return html`
+      <div class="editor-section">
+        <div class="section-title">🗓 Tagesdaten</div>
+        <div class="editor-grid">
+          <label>Heute:${renderSelect('entity_today', this.config.entity_today)}</label>
+          <label>Morgen:${renderSelect('entity_tomorrow', this.config.entity_tomorrow)}</label>
+          <label>Tag 3:${renderSelect('entity_day3', this.config.entity_day3)}</label>
+          <label>Tag 4:${renderSelect('entity_day4', this.config.entity_day4)}</label>
+          <label>Tag 5:${renderSelect('entity_day5', this.config.entity_day5)}</label>
+        </div>
+      </div>
+
+      <div class="editor-section">
+        <div class="section-title">➕ Restdaten</div>
+        <div class="editor-grid">
+          <label>Rest (optional):${renderSelect('entity_remaining', this.config.entity_remaining)}</label>
+          <label class="tooltip-label">Threshold „Rest“ (kWh):
+            <span class="tooltip-icon" title="Grenzwert, ab dem Rest-Balken farblich hervorgehoben wird.">🛈</span>
+            <input type="number" name="remaining_threshold" .value=${this.config.remaining_threshold ?? ''} @input=${this._updateConfig} />
+          </label>
+        </div>
+      </div>
+
+      <div class="editor-section">
+        <div class="section-title">🎨 Darstellung</div>
+        <div class="editor-grid">
+          <label class="tooltip-label">Max-Wert (kWh):
+            <span class="tooltip-icon" title="Wert, auf den sich die Balkenbreite prozentual bezieht.">🛈</span>
+            <input type="number" name="max_value" .value=${this.config.max_value || 100} @input=${this._updateConfig} />
+          </label>
+          <label class="tooltip-label">Animation:
+            <span class="tooltip-icon" title="Dauer der Balken-Animation, z. B. '1s' oder '500ms'.">🛈</span>
+            <input type="text" name="animation_duration" .value=${this.config.animation_duration || '1s'} @input=${this._updateConfig} />
+          </label>
+          <label>Farbe Start Balken:
+            <input type="color" name="bar_color_start" .value=${this.config.bar_color_start || '#3498db'} @input=${this._updateConfig} />
+          </label>
+          <label>Farbe Ende Balken:
+            <input type="color" name="bar_color_end" .value=${this.config.bar_color_end || '#2ecc71'} @input=${this._updateConfig} />
+          </label>
+        </div>
+      </div>
+    `;
+  }
+}
+
+customElements.define('clock-pv-forecast-card-editor', ClockPvForecastCardEditor);
+
+
+// Register card for Home Assistant visual editor
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: 'clock-pv-forecast-card',
+  name: 'Clock PV Forecast Card',
+  description: 'Visualisiert die PV-Prognose der nächsten Tage als Balkendiagramm',
+  preview: false,
+});
